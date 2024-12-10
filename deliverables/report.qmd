@@ -1,0 +1,660 @@
+---
+title: "S&DS 224 Final Project: Pig"
+author: "Elder Veliz"
+date: "`r Sys.Date()`"
+format: pdf
+editor: visual
+---
+
+```{r, echo=FALSE}
+suppressMessages({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(pubtheme)
+  library(reshape2)
+})
+source("../src/simulate_one_player_strategies_pig.R")
+source("../src/train_optimal_v_and_policy.R")
+source("../src/simulate_two_player_strategies_pig.R")
+
+SIMULATE <- FALSE  # Set to TRUE to run simulations (reproducibility)
+set.seed(224)      # Set seed for reproducibility
+```
+
+# Introduction
+
+"Pig" is a simple dice game that cleverly balances luck and skill. Players take turns rolling a single six-sided die, accumulating points in an effort to reach a target score before their opponent(s). On each turn, players face a pivotal decision: whether to "hold" and bank their points... or "roll" to potentially accumulate more. The choice to roll again is loaded with risk—as rolling a 1 results in forfeiting *all* points earned that turn and ending the player’s turn. The game's inherent tension between risk and reward creates a rich decision-making landscape, making it an ideal subject for strategic analysis.
+
+This project seeks to answer the central question: what *is* the optimal strategy for playing Pig? Focusing on the decision to "hold" versus "roll", this study integrates probabilistic modeling, heuristic strategies, and Markov Decision Processes (MDPs) to analyze and optimize gameplay. Specifically, this work explores:
+
+-   The impact of turn thresholds: Quantifying how holding at specific cumulative turn totals (e.g., 20 points) influences game performance.
+
+-   The dynamics of rolling and holding decisions: Evaluating the expected number of turns and outcomes associated with various strategies at different game states.
+
+-   Multi-player interactions: Extending the analysis to two-player scenarios, incorporating the effects of relative scores and the opponent’s strategy.
+
+Key empirical findings suggest that policies derived from MDP optimization outperform simple heuristic strategies, even when accounting for starting player advantage. However, the analysis also highlights that the best move may simply be to play first, underscoring the significant role of turn order in determining game outcomes.
+
+By defining the state space, transition probabilities, and reward structures of Pig, this project demonstrates how decision-theoretic approaches can effectively optimize strategies in stochastic, competitive settings. Through simulations and mathematical modeling, the study provides valuable insights into the balance between risk and reward in Pig and offers broader implications for strategic decision-making in similar games.
+
+## Game Assumptions
+
+-   The single die has six faces with uniform probabilities.
+-   Players always follow their respective strategies without error.
+-   The game ends when a player reaches or exceeds the target score, set here at 100.
+
+# Single-Player Pig
+
+For simplicity, I begin by analyzing the single-player version of Pig. This allows me to focus on the core decision-making dynamics of the game without the added complexity of multiple players.
+
+## Mathematical Foundation
+
+During a turn, the player has two options: roll or hold. A common heuristic strategy is to roll as long as the expected value of rolling exceeds the expected value of holding. Below, we derive the expected value of rolling based on the game's probabilities and outcomes.
+
+Let $X$ be the number of successful rolls (i.e., rolling a 2-6) until the first failure (rolling a 1). This can be naturally modeled as a Geometric random variable with success probability $p = \frac{1}{6}$, since that is the probability of rolling a 1 on fair, six-sided die. Thus, the expected number of consecutive rolls before busting can be expressed as:
+
+$$
+\begin{aligned}
+X &\sim \text{Geometric}(p = \frac{1}{6})\\
+\mathbb{E}[X] &= \frac{1}{p} - 1 = \frac{1}{\frac{1}{6}} - 1= \frac{6}{1} - 1 = \boxed{5 \text{ rolls}}
+\end{aligned}
+$$
+
+In other words, on average, the player can expect five successful rolls before busting (rolling a 1).
+
+Let $R$ be the value of a *successful* die roll (i.e., rolling a 2-6). Since the outcomes of a successful die roll are uniformly distributed over the set $\{2,3,4,5,6\}$, the expected value of a successful roll is:
+
+$$
+\begin{aligned}
+R &\sim \text{Discrete Uniform}(2, 6)\\
+\mathbb{E}[R] &= \frac{2 + 6}{2} = \frac{8}{2} = \boxed{4}
+\end{aligned}
+$$
+
+Assuming independence between the number of successful rolls and the value of each successful roll, the expected value of rolling can be calculated as:
+
+$$
+\begin{aligned}
+\mathbb{E}[X \cdot R] = \mathbb{E}[X] \cdot \mathbb{E}[R] = 5 \cdot 4 = \boxed{20}
+\end{aligned}
+$$
+
+Thus, the heuristic strategy suggests that the player should continue rolling while the turn total $T$ is less than 20 and hold when $T \ge 20$. This threshold, theoretically, maximizes the expected value of a turn under the heuristic strategy.
+
+This heuristic is, of course, a simplification as it does not account for critical factors like the player's current total score relative to the target score and the diminishing returns of rolling as the player approaches the target score. Its mathematical basis is also dubious, given that the value of a successful die roll is necessarily conditional on the roll being successful (non-1). Nevertheless, it serves as a useful starting point for analyzing decision-making in Pig.
+
+## Simulation
+
+To evaluate the heuristic strategy, I simulate the single-player Pig game using different heuristic "hold" thresholds. The simulation algorithm tracks the number of turns taken to reach the target score of 100.
+
+To elucidate the algorithm's logic:
+
+1.  The player starts with a turn total of 0. It rolls until:
+    -   It reaches the "hold" threshold (e.g., 20),
+    -   It rolls a 1 (busts), or
+    -   It reaches the target score of 100.
+
+<!-- -->
+
+2.  The algorithm is repeated for hold thresholds ranging from 17 to 26.
+3.  For each threshold, 100,000 simulations are run to analyze the distribution of the number of turns taken to win the game.
+
+```{r, echo=FALSE}
+hold_thresholds <- c(17:26)
+n_simulations <- 1e5
+
+if (SIMULATE) {
+  results <- list()
+  for (threshold in hold_thresholds) {
+    message(sprintf("Simulating for hold threshold: %d", threshold))
+    turns <- replicate(n_simulations, simulate_heuristic_pig(hold_threshold=threshold))
+    results[[as.character(threshold)]] <- turns
+  }
+  #saveRDS(results, "../data/single_heuristic_results.rds")
+} else {
+  results <- readRDS("../data/single_heuristic_results.rds")
+}
+
+data <- melt(results, variable.name = "Threshold", value.name = "Turns") |>
+  rename(Threshold = L1)
+
+data_summary <- data |>
+  group_by(Threshold) |>
+  summarise(
+    Mean = mean(Turns),
+    Median = median(Turns),
+    Std_Err = sd(Turns),
+    .groups = "drop"
+    )
+
+data_summary |>
+  as.data.frame() |>
+  mutate(
+    Threshold = as.numeric(Threshold),
+    Mean = round(Mean, 2),
+    Median = round(Median, 2),
+    Std_Err = round(Std_Err, 2)
+  )
+```
+
+```{r, echo=FALSE, fig.height = 5, fig.width = 7.5}
+data_density <- data |>
+  group_by(Threshold, Turns) |>
+  summarize(Proportion = n() / n_simulations, .groups = "drop") |>
+  filter(Turns <= 30) # Limit to 30 turns for better visualization
+
+# Plot density distributions with mean
+ggplot(data_density, aes(x = Turns, y = Proportion, color = as.factor(Threshold))) +
+  geom_point(size = 1) +
+  geom_smooth(
+    stat   = "smooth", 
+    method = "loess", 
+    se     = FALSE, 
+    span   = 0.3) +
+  geom_vline(data = data_summary, 
+             aes(xintercept = Mean, color = as.factor(Threshold)), 
+             linetype = "dashed") +
+  labs(
+    title = "Probability Distributions for Different Hold Thresholds",
+    subtitle = "Single-Player Heuristic Strategy (n=100,000)",
+    caption = "PMFs were 'smoothed' into PDFs solely for visual comparison purposes.",
+    x = "Number of Turns to Win",
+    y = "P(X=x)",
+    color = "Hold Threshold"
+  ) +
+  scale_x_continuous(breaks = seq(4, 30, 1)) +
+  scale_y_continuous(breaks = seq(0, 0.1, .02)) +
+  theme_pub() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+Empirical results indicate the mean number of turns to win the game reaches a minimum at a "hold" threshold of 20. This suggests a threshold of 20 optimally balances the trade-off between accumulating points efficiently while minimizing the risk of busting. Specifically, holding at 20 allows the player to win in fewer turns on average, which aligns with the heuristic assumption that the expected value of rolling ($\mathbb{E}[X\cdot R] = 20$) is maximized up to this point.
+
+Interestingly, the mean number of turns to win the game remains relatively stable across different thresholds, fluctuating only slightly around 12-13 turns. This suggests that, while the choice of "hold" threshold has some impact on efficiency, it primarily affects the *risk profile* of the strategy rather than the average performance. Players who prioritize consistency over variability may prefer lower thresholds (e.g. 18-20), while players willing to accept more risk for potentially higher rewards may opt for higher thresholds (e.g. 22-24).
+
+The consistency in median turns across almost all thresholds (12 turns) further supports this conclusion. Regardless of the threshold chosen, the median number of turns to win the game remains relatively stable, indicating that the heuristic strategy is robust across a range of thresholds.
+
+However, as the thresholds increase, the variance also grows, highlighting that with increased variability, higher thresholds make predictions about individual game lengths less reliable.
+
+```{r, echo=FALSE, fig.height = 5, fig.width = 7.5}
+data_pmf <- data_density |> filter(Threshold == 20)
+
+# Plot PMF
+ggplot(data_pmf, aes(x = Turns, y = Proportion, color = as.factor(Threshold))) +
+  geom_col(
+    width = 0.1,
+    show.legend = FALSE) +
+  geom_point(
+    size = 1.5,
+    show.legend = FALSE) +
+  geom_vline(
+    data = data_summary |> filter(Threshold == 20),
+    aes(xintercept = Mean, color = as.factor(Threshold)),
+    linetype = "dashed",
+    show.legend = FALSE) +
+  labs(
+    title = "Probability Mass Function for Hold Threshold 20",
+    subtitle = "Single-Player Heuristic Strategy (n=100,000)",
+    x = "Number of Turns to Win",
+    y = "P(X = x)"
+  ) +
+  scale_x_continuous(breaks = seq(4, 30, 1)) +
+  scale_y_continuous(breaks = seq(0, 0.1, 0.01)) +
+  theme_pub() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+Above, we isolate the empirical probability mass function for the number of turns to win using the "hold" threshold of 20 strategy. We observe that the mean number of turns to win the game is approximately 12.6, with a relatively narrow distribution around this mean. Again, this suggests that the "hold" threshold of 20 may be a robust strategy for winning the single-player Pig game as it minimizes the average number of turns and has relatively low variability in its outcomes.
+
+# Two-Player Pig
+
+Nevertheless, the single-player Pig game is only half the fun! The two-player version of Pig introduces additional strategic considerations, particularly in the context of relative scores. In this section, we extend our analysis to the two-player version of Pig, where players alternate turns and compete to reach the target score of 100.
+
+## Mathematical Foundation
+
+The two-player version of Pig can be formulated as a **Markov Decision Process (MDP)**. This formalism is well-suited for modeling decision-making processes where outcomes are influenced by both strategic decisions and stochastic events. The goal is to determine the *optimal policy* that maximizes a player’s expected utility, accounting for the game’s probabilistic nature and the opponent’s optimal actions.
+
+### Key Assumptions in the MDP Framework:
+
+-   Markov Property: The probability of transitioning to a future state depends solely on the current state $s_t$ and action $a_t$, not on prior states and actions. $$
+    P(s_{t+1} | s_t, a_t, \ldots, s_0, a_0) = P(s_{t+1} | s_t, a_t)
+    $$
+
+-   Finite State and Action Spaces: We define our **game state** via the triplet $(T, P, O)$ encoding the current turn total, the player's score, and the opponent's score, respectively. Each of these variables ranges from 0 to 105 (due to possible overshoots), exhaustively representing all possible states in the game. The **action space** consists of two actions: roll or hold.
+
+-   Stationarity: The game's rules including die probabilities and the scoring system remain constant throughout play.
+
+-   Full Observability: Both players have complete information about the current state $s = (T, P, O)$ and the set of possible actions.
+
+### Additional MDP Components:
+
+-   Reward Function: The reward function $R(s_t, a_t, s_{t+1})$ defines the immediate utility of transitioning from state $s_t$ to state $s_{t+1}$ by taking action $a_t$. We define a simple reward model:
+
+    -   +1 if the player wins ($P + T \ge 100$),
+
+    -   -1 if the opponent wins ($O \ge 100$), and
+
+    -   0 otherwise.
+
+-   Value Function: The value function $V(s)$ represents the expected cumulative reward when starting in state $s$ and following the optimal policy thereafter: $$
+    V(s) = \max_{a \in A} \mathbb{E} \left[ R(s_t, a_t, s_{t+1}) + \gamma V(s_{t+1}) \right]
+    $$
+
+-   Policy: The policy $\pi(s)$ defines the optimal action $a$ to take in state $s$ to maximize $V(s)$.
+
+-   Transition Probabilities: The transition probabilities $P(s_{t+1} | s_t, a_t)$ describe the probability of transitioning to state $s_{t+1}$ when taking action $a_t$ in state $s_t$. For example,
+
+    -   Rolling a 1 transitions to $(0, O, P)$ (opponent's turn).
+
+    -   Rolling $r \in [2,6]$ transitions to $(T+r, P, O)$ (player's turn continues with an increased turn total).
+
+### Zero-Sum Framework
+
+Two-player Pig operates in a **zero-sum framework**, where the player’s gain is the opponent’s loss. This assumption ensures that the utility of one player is the negative of the opponent’s utility. Consequently, the value function accounts for the opponent playing *optimally*.
+
+For any state $(T, P, O)$, the utility of holding is:
+
+$$
+V_{Hold} (T, P, O) = 
+\begin{cases}
+1 & \text{if } P + T \geq 100\\
+-V(0, O, P+T) & \text{otherwise. }\\
+\end{cases},
+$$ i.e. holding either wins the game or transitions to the opponent's turn with the updated state.
+
+The utility of rolling is the expected value over all possible outcomes of rolling the die:
+
+$$
+V_{Roll} (T, P, O) = \frac{1}{6} \left(-V(0, O, P) + \sum_{r=2}^{6} V(T+r, P, O)\right),
+$$ where rolling a 1 transitions to $(0, O, P)$ and rolling $r \in [2,6]$ transitions to $(T+r, P, O)$.
+
+### Value Iteration
+
+To compute the optimal policy, we use value iteration, a dynamic programming algorithm that iteratively updates the value function $V(s)$ until convergence. The update rule is derived from the Bellman Optimality Equation:
+
+$$
+V(s) = \max_{a \in A} \sum_{s_{t+1}} P(s_{t+1} | s_t, a_t) \left[ R(s_t, a_t, s_{t+1}) + \gamma V(s_{t+1}) \right]
+$$
+
+At a high level, the algorithm proceeds as follows:
+
+1.  Initialization: Start with an initial estimate $V_0(s)$, in our case with all states set to 0.
+
+2.  Iteration: Update $V(s)$ for each state using the aforementioned Bellman Optimality Equation until the maximum change in $V(s)$ across all states is less than a predefined threshold $\theta$, in our case $\theta = 10^{-5}$.
+
+3.  Policy Extraction: For each state, choose the action $a$ that maximizes $V(s)$:
+
+$$
+\pi(s) = \text{arg}\max_{a \in A} \sum_{s_{t+1}} P(s_{t+1} | s_t, a_t) \left[ R(s_t, a_t, s_{t+1}) + \gamma V(s_{t+1}) \right].
+$$
+
+In our implementation, we set $\gamma = 1$ to emphasize *future* rewards over immediate rewards, thus prioritizing strategies that minimize the expected number of turns to win the game.
+
+## Optimal Value Function and Policy Training
+
+The optimal policy and value function were trained via the previously described value iteration algorithm, where state-value estimates are iteratively updated until convergence. I designed the algorithm to be easily customizable, enabling future work to tinker with parameters like the convergence threshold, maximum turn score, target score, and number of die sides. For this training sequence, I set the convergence threshold to $10^{-5}$ (ensuring convergence to a near-optimal solution while maintaining computational efficiency), the maximum turn score to 100, the target score to 100, and the die to have six sides.
+
+```{r, echo=FALSE}
+if (SIMULATE) {
+  V_and_policy_trained <- train_optimal_v_and_policy(    
+    theta=1e-5,       # convergence threshold
+    T_MAX=100,        # maximum turn score (to limit state space)
+    TARGET_SCORE=100, # score required to win
+    DIE_SIDES=6,      # number of sides on the die
+    VERBOSE=TRUE      # print progress at each iteration
+  )
+  #saveRDS(V_and_policy_trained, "../data/optimal_policy_results.rds")
+} else {
+  V_and_policy_trained <- readRDS("../data/optimal_policy_results.rds")
+}
+
+V <- V_and_policy_trained$V
+policy <- V_and_policy_trained$policy
+```
+
+```{r, echo=FALSE, fig.height = 7.5, fig.width = 7.5}
+# Values of O_fixed to analyze
+O_fixed_values <- c(6, 33, 67, 99)
+
+# List to store data frames
+policy_data_list <- list()
+
+# Extract policy for each O_fixed and reshape
+for (O_fixed in O_fixed_values) {
+  policy_matrix <- policy[, , O_fixed + 1]  # Extract policy matrix
+  policy_df <- melt(policy_matrix)         # Reshape to long format
+  colnames(policy_df) <- c("TurnTotal", "PlayerScore", "Action")
+  policy_df$Action <- as.factor(policy_df$Action)  # Convert to categorical
+  policy_df$OpponentScore <- O_fixed               # Add opponent score
+  policy_data_list[[length(policy_data_list) + 1]] <- policy_df
+}
+
+# Combine DFs into 1
+policy_data <- do.call(rbind, policy_data_list)
+
+# Plot heatmaps
+ggplot(policy_data, aes(x = PlayerScore, y = TurnTotal, fill = Action)) +
+  geom_tile() +
+  labs(title = "Optimal Policy Heatmaps",
+       x = "Player's Score",
+       y = "Turn Total",
+       fill = "Action") +
+  scale_x_continuous(breaks = seq(0, 100, 10)) +
+  scale_y_continuous(breaks = seq(0, 100, 10)) +
+  facet_wrap(~ OpponentScore, ncol = 2, labeller = label_both) +
+  theme_pub() +
+  theme(strip.text = element_text(size = 12, face = "bold"))
+```
+
+To evaluate the optimal policy, the optimal policy was visualized under fixed opponent scores ($O \in \{6, 33, 67, 99\}$), representing distinct game scenarios. The heatmaps illustrate the optimal action (roll or hold) for each possible state $(T, P, O)$.
+
+#### Opponent Score: 6
+
+This scenario represents the initial state of the game, where the opponent has gone at least once. This scenario is most favorable to the player, since there is no immediate threat of losing.
+
+The optimal policy suggests that the player should hold when the turn total is roughly 20 or more, consistent with the heuristic strategy derived earlier. This strategy is somewhat conservative especially for player scores near 50-70, which reflects the risk of losing progress and falling behind the opponent due to busting. If the player score is above 80, however, the policy becomes more aggressive—encouraging the player to continue rolling until they meet the target score. This shift indicates the player's willingness to take calculated risks to reach the target score that same turn, leveraging their substantial lead over the opponent.
+
+#### Opponent Score: 33
+
+This scenario represents an early-to-mid game state where the opponent has accumulated a moderate score. The optimal policy is similar to the previous scenario although slightly riskier, with the player holding at turn totals of roughly 23 (instead of 20) to minimize the risk of the opponent winning on their next turn. This increase in risk tolerance is also present near the terminal state, now suggesting that the player should continue rolling until they reach the target score if their starting turn score is at 75 (down from 80 in the previous scenario).
+
+#### Opponent Score: 67
+
+This scenario represents an mid-to-late game state where the opponent is closing in on the target score. Naturally, the stakes for the player are higher, which is reflected in the much more aggressive optimal policy.
+
+For a player very behind the opponent (scores of 0-20), the player is encouraged to only hold at turn totals of 30-40 and players moderately behind the opponent (scores of 21-60) hold at turn totals 20-30. The strategy here shifts toward catching up to the opponent, prioritizing rolling to gain ground quickly.
+
+For higher player scores ($P>60$), the policy instructs the player to continue rolling aggressively until the target score is reached. This reflects the urgency to secure a win before the opponent's next turn.
+
+#### Opponent Score: 99
+
+This scenario represents the critical end-game state, where the opponent is just 1 point away from the target score and is almost guaranteed to win on their next turn unless their first roll results in a 1.
+
+The optimal policy becomes maximally aggressive. The player is instructed to roll repeatedly, regardless of the turn total or current score, in a last-ditch effort to surpass the target score. This high-risk strategy is logical, as the player's only chance of winning is to secure victory in the current turn. Holding in this scenario would effectively concede the game to the opponent.
+
+Ultimately, these heatmaps suggest the optimal policy adapts dynamically based on the opponent's progress, incorporating the trade-offs between risk and reward in response to evolving game states and becoming increasingly aggressive as the game nears its conclusion. The optimal policy aligns naturally with human intuition, which is quite remarkable given the complexity of the game and the stochastic nature of the die rolls.
+
+### State Value Heatmaps
+
+```{r, echo=FALSE, fig.height = 7.5, fig.width = 7.5}
+# List to store data frames
+value_data_list <- list()
+
+# Extract value function for each O_fixed and reshape
+for (O_fixed in O_fixed_values) {
+  value_matrix <- V[, , O_fixed + 1]      # Extract value matrix
+  value_df <- melt(value_matrix)          # Reshape to long format
+  colnames(value_df) <- c("TurnTotal", "PlayerScore", "Value")
+  value_df$OpponentScore <- O_fixed       # Add opponent score
+  value_data_list[[length(value_data_list) + 1]] <- value_df
+}
+
+# Combine DFs into 1
+value_data <- do.call(rbind, value_data_list)
+
+# Plot heatmaps
+ggplot(value_data, aes(x = PlayerScore, y = TurnTotal, fill = Value)) +
+  geom_tile() +
+  labs(title = "State Value Heatmaps",
+       x = "Player's Score",
+       y = "Turn Total",
+       fill = "Value") +
+  scale_x_continuous(breaks = seq(0, 100, 10)) +
+  scale_y_continuous(breaks = seq(0, 100, 10)) +
+  facet_wrap(~ OpponentScore, ncol = 2, labeller = label_both) +
+  theme_pub() +
+  theme(strip.text = element_text(size = 12, face = "bold"))
+```
+
+The state value heatmaps illustrate the expected future rewards for different game states, corroborating the training's emphasis on maximizing long-term rewards over immediate gains. Again, each heatmap corresponds to a fixed opponent score ($O \in \{6,33,67,99\}$).
+
+As expected, the state values correspond closely with the optimal policy heatmaps. For instance, the highest state values (+1) are observed near the target score of 100, reflecting the substantial reward associated with winning the game. Conversely, the lowest state values (-0.5) are concentrated near states with low player scores, low player turn totals, and a high opponent score (e.g. 99). The state values smoothly transition between these extremes, reflecting the gradual changes in expected rewards as the game progresses.
+
+The value function aligns with the optimal policy's calculated trade-offs between risk and reward across game states, reinforcing the player’s perceived chances of winning in different scenarios. These results confirm that the value iteration effectively prioritizes future rewards while adapting to the stakes of each scenario.
+
+## Simulation
+
+To evaluate the effectiveness of the trained optimal policy, I simulated games between agents employing different strategies. Three match-ups were considered: heuristic strategy vs heuristic strategy, optimal policy vs optimal policy, and optimal policy vs heuristic strategy. These simulations reveal how well the optimal policy performs relative to the heuristic strategy, both in isolation and in direct competition.
+
+### Heuristic vs. Heuristic
+
+```{r, echo=FALSE, fig.height = 3.5, fig.width = 7.5}
+if (SIMULATE){
+  results <- replicate(
+    n_simulations, 
+    simulate_heuristic_vs_heuristic_pig(starting_player=1)
+  )
+  #saveRDS(results, "../data/heuristic_vs_heuristic_results.rds")
+} else {
+  results <- readRDS("../data/heuristic_vs_heuristic_results.rds")
+}
+
+# Calculate win rates
+win_rate_P1 <- mean(results == 1)
+win_rate_P2 <- mean(results == 2)
+
+# cat("Player 1 goes first:\n")
+# cat("Player 1 Win Rate:", win_rate_P1, "\n")
+# cat("Player 2 Win Rate:", win_rate_P2, "\n\n")
+
+win_data <- data.frame(
+  Player = c("Player 1 (Heuristic)", "Player 2 (Heuristic)"),
+  WinRate = c(win_rate_P1, win_rate_P2)
+)
+
+ggplot(win_data, aes(x = Player, y = WinRate, fill = Player)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Win Rates: Heuristic Strategy vs. Heuristic Strategy", 
+    subtitle = "Two-Player Pig Game (n=100,000)",
+    y = "Win Rate") +
+  theme_pub() +
+  scale_fill_manual(values = c("steelblue", "firebrick")) +
+  ylim(0, 1) +
+  theme(legend.position = "none") +
+  geom_text(aes(label = sprintf("%.2f%%", WinRate * 100)), vjust = -0.2)
+```
+
+In this scenario, both agents followed the simple heuristic strategy, effectively mirroring the single-player heuristic strategy where each player would roll until the turn total reached 20 (or they reach the target score) and holding thereafter, irrespective of the game state.
+
+Naively, I expected the results to indicate that the win rates for both players were nearly identical, with each player winning approximately 50% of the games. In reality, the simulations revealed a starting player advantage: where the player to make the first move won more games than their opponent. Over 100,000 simulations, the starting player (Player 1) won approximately 53.4% of the games, while the second player (Player 2) won the remaining 46.6%.
+
+These results suggest the starting player has a 6.8% advantage over the second player, a non-negligible difference that could be attributed to the inherent dynamics of the game. The starting player has the first opportunity to accumulate points and set the pace of the game, potentially putting the second player on the "defensive" from the outset. The starting player also has the opportunity to reach the target score first, thereby winning the game before the second player has a chance to respond.
+
+### Optimal vs. Optimal
+
+```{r, echo=FALSE, fig.height = 3.5, fig.width = 7.5}
+if (SIMULATE) {
+  results <- replicate(n_simulations, simulate_optimal_vs_optimal_pig(V, policy))
+  #saveRDS(results, "../data/optimal_vs_optimal_results.rds")
+} else {
+  results <- readRDS("../data/optimal_vs_optimal_results.rds")
+}
+
+win_rate_P1 <- mean(results == 1)
+win_rate_P2 <- mean(results == 2)
+
+# cat("Player 1 Win Rate:", win_rate_P1, "\n")
+# cat("Player 2 Win Rate:", win_rate_P2, "\n")
+
+win_data <- data.frame(
+  Player = c("Player 1 (Optimal)", "Player 2 (Optimal)"),
+  WinRate = c(win_rate_P1, win_rate_P2)
+)
+
+ggplot(win_data, aes(x = Player, y = WinRate, fill = Player)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Win Rates: Optimal Policy vs. Optimal Policy", 
+    subtitle = "Two-Player Pig Game (n=100,000)",
+    y = "Win Rate") +
+  theme_pub() +
+  scale_fill_manual(values = c("steelblue", "firebrick")) +
+  ylim(0, 1) +
+  theme(legend.position = "none") +
+  geom_text(aes(label = sprintf("%.2f%%", WinRate * 100)), vjust = -0.2)
+```
+
+In this scenario, both players followed the optimal policy derived from the value iteration algorithm.
+
+As expected with both agents using the exact same strategy, the results are similar to the heuristic strategy vs. heuristic strategy match-up: Over 100,000 simulations, the starting player (Player 1) won approximately 53.2% of the games, while the second player (Player 2) won the remaining 46.8%.
+
+The optimal policy, while maximizing the expected utility for each player, does not eliminate the starting player advantage, despite being trained under the assumption that both players would play optimally. Though the starting player advantage is marginally less now at 6.4%, the empirical results suggest the inherent dynamics of the game, rather than the specific strategy employed, play a significant role in determining the outcome when agents share the same strategy.
+
+### Optimal vs. Heuristic
+
+```{r, echo=FALSE, fig.height = 3.5, fig.width = 7.5}
+if (SIMULATE) {
+
+  # Player 1 goes first
+  results_p1_first <- replicate(
+    n_simulations, 
+    simulate_optimal_vs_heuristic_pig(V, policy, starting_player = 1)
+  )
+  
+  # Player 2 goes first
+  results_p2_first <- replicate(
+    n_simulations, 
+    simulate_optimal_vs_heuristic_pig(V, policy, starting_player = 2)
+  )
+  
+  # saveRDS(results_p1_first, "../data/optimal_vs_heuristic_p1_first_results.rds")
+  # saveRDS(results_p2_first, "../data/optimal_vs_heuristic_p2_first_results.rds")
+} else {
+  results_p1_first <- readRDS("../data/optimal_vs_heuristic_p1_first_results.rds")
+  results_p2_first <- readRDS("../data/optimal_vs_heuristic_p2_first_results.rds")
+}
+
+# Win rates
+win_rate_p1_first <- c(
+  P1 = mean(results_p1_first == 1),
+  P2 = mean(results_p1_first == 2)
+)
+
+win_rate_p2_first <- c(
+  P1 = mean(results_p2_first == 1),
+  P2 = mean(results_p2_first == 2)
+)
+
+# cat("Player 1 goes first:\n")
+# cat("Player 1 (Optimal Policy) Win Rate:", 
+#     win_rate_p1_first["P1"], "\n")
+# cat("Player 2 (Heuristic Strategy) Win Rate:", 
+#     win_rate_p1_first["P2"], "\n\n")
+
+# cat("Player 2 goes first:\n")
+# cat("Player 1 (Optimal Policy) Win Rate:", 
+#     win_rate_p2_first["P1"], "\n")
+# cat("Player 2 (Heuristic Strategy) Win Rate:", 
+#     win_rate_p2_first["P2"], "\n")
+
+win_data <- data.frame(
+  StartingPlayer = rep(c("Player 1", "Player 2"), each = 2),
+  Player = rep(c("Player 1 (Optimal)", "Player 2 (Heuristic)"), 2),
+  WinRate = c(
+    win_rate_p1_first["P1"], win_rate_p1_first["P2"],
+    win_rate_p2_first["P1"], win_rate_p2_first["P2"]
+  )
+)
+
+ggplot(win_data, aes(x = StartingPlayer, y = WinRate, fill = Player)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Win Rates by Starting Player",
+    subtitle = "Two-Player Pig Game (n=100,000)",
+    y = "Win Rate",
+    x = "Starting Player"
+  ) +
+  theme_pub() +
+  scale_fill_manual(values = c("steelblue", "firebrick")) +
+  ylim(0, 1) +
+  geom_text(aes(label = sprintf("%.2f%%", WinRate * 100)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.3)
+```
+
+In perhaps the most critical test, the optimal policy faced off against the heuristic strategy. The results were analyzed under two conditions: when the optimal policy went first (left) and when the heuristic strategy went first (right).
+
+When the optimal policy went first, it won approximately 57.2% of the games, leaving the heuristic strategy with only 42.8% of wins. This notable gap of 14.4% in win rates underscores the optimal policy's clear superiority over the heuristic strategy. The optimal policy's ability to adapt to the game state and make strategic decisions based on long-term rewards significantly outperforms the simplistic and rigid heuristic strategy.
+
+More revealingly, the optimal policy *overcame* the starting player advantage when the starting player relied on the heuristic strategy. Here, the non-starting player (Player 1) using the optimal policy defeated Player 2 in 51.1% of games, surpassing the expected win rate for a non-starting player. Previously, when both players used the same strategy, the non-starting player won only 46.7% of games (averaging both previous scenarios). This indicates that the optimal policy provides a roughly 4.4% additional advantage to the non-starting player when facing a starting player using a sub-optimal policy.
+
+The optimal policy's ability to make informed decisions based on the game state and the opponent's progress allows it to outperform the heuristic strategy consistently, regardless of whether it starts first or second. This highlights the heuristic strategy's inherent limitations when faced with an opponent employing a more sophisticated and adaptive strategy. The heuristic strategy's rigidity and lack of strategic depth make it vulnerable to exploitation by the optimal policy, leading to a substantial difference in win rates and even neutralizing its starting player advantage.
+
+# Conclusion
+
+This project explored the game of Pig through various lenses, leveraging probabilistic modeling and Markov Decision Processes to derive and evaluate an optimal gameplay strategy. By simulating single-player and two-player scenarios, analyzing state value functions, and comparing heuristic and optimal policies, the project demonstrates the effectiveness of decision-theoretic approaches in optimizing gameplay for stochastic, competitive settings.
+
+## Key Findings
+
+Key findings include:
+
+-   Optimal "Hold" Threshold at 20: The heuristic strategy of holding at a turn total of 20 was identified as the best threshold for minimizing the average number of turns to win in a single-player game. Nevertheless, the general heuristic strategy was robust across different thresholds and its consistency in median turns to win the game suggests a very simple, reliable, and efficient approach to single-player Pig.
+-   Superior Optimal Policy Strategy: The optimal policy derived from value iteration outperformed the heuristic strategy in a head-to-head two-player setting, demonstrating a clear advantage in win rates and adaptability to game states. The optimal policy effectively neutralized the starting player advantage and provided a substantial edge over the heuristic strategy, emphasizing the importance adaptability in strategic decision-making.
+-   Starting Player Advantage: Simulations revealed a consistent starting player advantage, with the first player winning approximately 53.3% of games under both heuristic vs. heuristic and optimal vs. optimal conditions. This advantage suggests that all else equal, the best move may be simply to go first (assuming a rationale strategy).
+
+## Strengths and Weaknesses
+
+My work comprehensively explores and evaluates both the heuristic and optimal policy strategies in Pig. I examine the impact of different "hold" thresholds in single-player Pig, analyze the optimal policy's performance in two-player Pig using heatmaps of the optimal policy and values at different game states, and simulate various match-ups to assess the strategies' effectiveness. I also provide a mathematical justification for each approach and where assumptions are made that may not necessarily hold true in practice. Further, my implementation of each algorithm allows for easy modification of parameters, such as the target score, die configuration, or convergence criteria, enabling future research into variations of the game.
+
+However, the project is not without limitations. The simulations are based on a finite number of games and may not fully capture the strategies' long-term performance. The assumption of perfect play by both agents may not reflect real-world scenarios, where human players may exhibit suboptimal behavior. Additionally, the project focuses on a simplified version of Pig, which may not fully capture the complexity of the game in more nuanced settings. Future work could explore more advanced strategies, such as incorporating randomness into the optimal policy or extending the analysis to multi-player variants of Pig.
+
+## Future Directions
+
+As previously alluded, the project leaves ample room for future extensions, especially given the highly scalable design I employed in the engineering design of the algorithms. Potential avenues for further exploration include:
+
+-   Influence of Target Score: Analyzing how changing the target score affects the optimal policy and heuristic strategy, particularly in scenarios where the target score is significantly higher or lower than 100. This could reveal insights into the trade-offs between risk and reward in Pig-like games with different win conditions. This exploration can be similarly extended to other game parameters including the number of die sides (which could make rolling less risky) or fine-tuning of the discount factor $\gamma$ (which could increase the increase the emphasis on immediate rewards and potentially alter the propensity to "hold").
+
+-   Starting Player Advantage: Investigating methods or rules to balance the game, such as introducing handicaps or alternating the starting player. Accomplishing this could reveal just how superior the optimal policy may be... or how robust the heuristic strategy is against such handicaps.
+
+-   Multi-Player Variants: Extending the analysis to more than two players, where the dynamics of turn order and relative scoring become even more complex. This ambitious task could reveal new biases that were not fully observed in the single or two player settings.
+
+-   Incorporating Randomness in Policy Choices: Introduce slight randomness into the optimal policy to better simulate human behavior and test whether a non-deterministic decision-making process improves robustness against unforeseen scenarios.
+
+## Closing Thoughts
+
+This study demonstrated the power of decision-theoretic approaches in optimizing strategies for stochastic games like Pig. By formalizing gameplay decisions through MDPs and value iteration, it revealed actionable insights into risk-reward trade-offs, policy dynamics, and the influence of game parameters. While the optimal policy proved highly effective, future research could further refine the strategies and address the inherent limitations of the current model, allowing for a deeper understanding of strategic decision-making in similar games.
+
+# References
+
+Adams, R. P. (2019). *Markov Decision Processes*. COS324 Elements of Machine Learning, Princeton University. Retrieved from https://www.cs.princeton.edu/courses/archive/spring19/cos324/files/expectimax.pdf
+
+Game On Family, “How to Play the Pig Dice Game,” https://gameonfamily.com/pig-dice/.
+
+Lafferty, J. (2024). *Reinforcement Learning: Policy Methods*. S&DS 365 Intermediate Machine Learning, Yale University. Retrieved from https://github.com/YData123/sds365-fa24/raw/main/lectures/lecture-oct-30.pdf
+
+\newpage
+
+# Appendix
+
+## Verbose Simulations
+
+In this section, I run the simulations with verbose output to provide a more detailed look at the game dynamics and decision-making processes. This is to support the correctness and robustness of the algorithms and to provide a more interactive experience for readers interested in the inner workings of the simulations.
+
+The actual code is hidden by default due to its length and complexity, but it is all found in the 3 source scripts: `simulate_one_player_strategies_pig.R`, `train_optimal_v_and_policy.R`, and `simulate_two_player_strategies_pig.R`. The complete code hidden to create this report is found in the `script.pig_report.qmd` file.
+
+### Single-Player Pig: Heuristic
+
+```{r}
+simulate_heuristic_pig(hold_threshold = 20, VERBOSE = TRUE)
+```
+
+### Two-Player Pig: Heuristic vs. Heuristic
+
+```{r}
+simulate_heuristic_vs_heuristic_pig(heuristic=20, starting_player=1, VERBOSE=TRUE)
+```
+
+### Two-Player Pig: Optimal vs. Optimal
+
+```{r}
+simulate_optimal_vs_optimal_pig(V, policy, VERBOSE=TRUE)
+```
+
+### Two-Player Pig: Optimal vs. Heuristic
+
+```{r}
+simulate_optimal_vs_heuristic_pig(V, policy, starting_player=1, VERBOSE=TRUE)
+simulate_optimal_vs_heuristic_pig(V, policy, starting_player=2, VERBOSE=TRUE)
+```
