@@ -8,9 +8,7 @@ editor: visual
 
 ```{r, echo=FALSE}
 suppressMessages({
-  library(dplyr)
-  library(tidyr)
-  library(ggplot2)
+  library(tidyverse)
   library(pubtheme)
   library(reshape2)
 })
@@ -21,6 +19,13 @@ source("../src/simulate_two_player_strategies_pig.R")
 SIMULATE <- FALSE  # Set to TRUE to run simulations (reproducibility)
 set.seed(224)      # Set seed for reproducibility
 ```
+
+### GitHub Repository
+
+The complete source code, simulations, and deliverables for this project are available on GitHub. You can access the repository at the following link:\
+[GitHub Repository](https://github.com/Elder453/SNDS224-final)
+
+This repository contains all scripts, pre-saved data, environment setup files, and final deliverables to facilitate replication and further exploration of the project.
 
 # Introduction
 
@@ -632,7 +637,7 @@ Lafferty, J. (2024). *Reinforcement Learning: Policy Methods*. S&DS 365 Intermed
 
 In this section, I run the simulations with verbose output to provide a more detailed look at the game dynamics and decision-making processes. This is to support the correctness and robustness of the algorithms and to provide a more interactive experience for readers interested in the inner workings of the simulations.
 
-The actual code is hidden by default due to its length and complexity, but it is all found in the 3 source scripts: `simulate_one_player_strategies_pig.R`, `train_optimal_v_and_policy.R`, and `simulate_two_player_strategies_pig.R`. The complete code hidden to create this report is found in the `script.pig_report.qmd` file.
+The actual code is hidden by default due to its length and complexity, but it is all found in the `src` folder.
 
 ### Single-Player Pig: Heuristic
 

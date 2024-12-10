@@ -1,5 +1,5 @@
 # **S&DS 224: Pig Game Strategy Analysis**
-# Author: Elder Veliz
+## Author: Elder Veliz
 
 This repository contains all the files and resources used for the strategic analysis and optimization of the Pig game. The project leverages probabilistic modeling, heuristic strategies, and Markov Decision Processes (MDPs) to derive optimal strategies and compare them against heuristic approaches.
 
@@ -11,16 +11,13 @@ This repository contains all the files and resources used for the strategic anal
   - Contains the required R libraries for running the project. Use this file to set up the environment by creating a compatible R environment.
 
 - **`src/`**  
-  - Contains the source R script files for each function used in the project. This includes code for simulations, value iteration, policy extraction, and data visualization.
+  - Contains the source R script files for each function used in the project. This includes code for simulations, value iteration, policy extraction, and data visualization. It also include the Quarto Markdown source file for the report and the PowerPoint slides for the presentation.
 
 - **`data/`**  
   - Contains pre-saved versions of the simulation results to avoid re-running time-intensive computations. These include results for heuristic strategies, optimal policy training, and match-up simulations.
 
 - **`deliverables/`**  
-  - Includes all final deliverables:
-    - **PDFs**: The final presentation and report in PDF format.
-    - **QMD**: The Quarto Markdown source file for the report.
-    - **PPTX**: The PowerPoint slides for the presentation.
+  - Includes the final presentation and report in PDF format.
 
 ---
 
