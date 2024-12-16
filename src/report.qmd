@@ -22,8 +22,7 @@ set.seed(224)      # Set seed for reproducibility
 
 ### GitHub Repository
 
-The complete source code, simulations, and deliverables for this project are available on GitHub. You can access the repository at the following link:\
-[GitHub Repository](https://github.com/Elder453/SNDS224-final)
+The complete source code, simulations, and deliverables for this project are available on GitHub. You can access the repository at the following link: [GitHub Repository](https://github.com/Elder453/SNDS224-final) (<https://github.com/Elder453/SNDS224-final>)
 
 This repository contains all scripts, pre-saved data, environment setup files, and final deliverables to facilitate replication and further exploration of the project.
 
@@ -617,12 +616,15 @@ This project explored the game of Pig through various lenses, leveraging probabi
 ## Key Findings
 
 ### Optimal "Hold" Threshold at 20:
+
 The heuristic strategy of holding at a turn total of 20 was identified as the best threshold for minimizing the average number of turns to win in a single-player game. Nevertheless, the general heuristic strategy was robust across different thresholds and its consistency in median turns to win the game suggests a very simple, reliable, and efficient approach to single-player Pig.
 
 ### Superior Optimal Policy Strategy:
+
 The optimal policy derived from value iteration outperformed the heuristic strategy in a head-to-head two-player setting, demonstrating a clear advantage in win rates and adaptability to game states. The optimal policy effectively neutralized the starting player advantage and provided a substantial edge over the heuristic strategy, emphasizing the importance adaptability in strategic decision-making.
 
 ### Starting Player Advantage:
+
 Simulations revealed a consistent starting player advantage, with the first player winning approximately 53.3% of games under both heuristic vs. heuristic and optimal vs. optimal conditions. This advantage suggests that all else equal, the best move may be simply to go first (assuming a rational strategy).
 
 ## Strengths and Weaknesses
@@ -636,15 +638,19 @@ However, the project is not without limitations. The simulations are based on a 
 As previously alluded, the project leaves ample room for future extensions, especially given the highly scalable design I employed in the engineering design of the algorithms. Potential avenues for further exploration include:
 
 ### Influence of Target Score and Other Hyperparameters:
+
 Analyzing how changing the target score affects the optimal policy and heuristic strategy, particularly in scenarios where the target score is significantly higher or lower than 100. This could reveal insights into the trade-offs between risk and reward in Pig-like games with different win conditions. This exploration can be similarly extended to other game parameters including the number of die sides (which could make rolling less risky) or fine-tuning of the discount factor $\gamma$ (which could increase the increase the emphasis on immediate rewards and potentially alter the propensity to "hold").
 
 ### Starting Player Advantage:
+
 Investigating methods or rules to balance the game, such as introducing handicaps or alternating the starting player. Accomplishing this could reveal just how superior the optimal policy may be... or how robust the heuristic strategy is against such handicaps.
 
 ### Multi-Player Variants:
+
 Extending the analysis to more than two players, where the dynamics of turn order and relative scoring become even more complex. This could reveal new biases that were not fully observed in the single or two player settings.
 
 ### Incorporating Randomness in Policy Choices:
+
 Introduce slight randomness into the optimal policy to better simulate human behavior and test whether a non-deterministic decision-making process improves robustness against unforeseen scenarios.
 
 ## Closing Thoughts
@@ -653,7 +659,7 @@ This study demonstrated the power of decision-theoretic approaches in optimizing
 
 # References
 
-Adams, R. P. (2019). *Markov Decision Processes*. COS324 Elements of Machine Learning, Princeton University. Retrieved from  
+Adams, R. P. (2019). *Markov Decision Processes*. COS324 Elements of Machine Learning, Princeton University. Retrieved from\
 https://www.cs.princeton.edu/courses/archive/spring19/cos324/files/expectimax.pdf.
 
 Game On Family, “How to Play the Pig Dice Game,” https://gameonfamily.com/pig-dice/.
