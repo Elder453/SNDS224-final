@@ -29,7 +29,7 @@ This repository contains all scripts, pre-saved data, environment setup files, a
 
 # Introduction
 
-"Pig" is a simple dice game that cleverly balances luck and skill. Players take turns rolling a single six-sided die, accumulating points in an effort to reach a target score before their opponent(s). On each turn, players face a pivotal decision: whether to "hold" and bank their points... or "roll" to potentially accumulate more. The choice to roll again is loaded with risk—as rolling a 1 results in forfeiting *all* points earned that turn and ending the player’s turn. The game's inherent tension between risk and reward creates a rich decision-making landscape, making it an ideal subject for strategic analysis.
+"Pig" is a simple dice game that cleverly balances luck and skill. Players take turns rolling a single six-sided die, accumulating points in an effort to reach a target score before their opponent(s). On each turn, players face a pivotal decision: whether to "hold" and bank their points... or "roll" to potentially accumulate more. The choice to roll again is loaded with risk—as rolling a 1 results in forfeiting *all* points earned that turn and ending the player’s turn. The game's inherent tension between risk and reward creates an intriguing decision-making landscape, making it an ideal subject for strategic analysis.
 
 This project seeks to answer the central question: what *is* the optimal strategy for playing Pig? Focusing on the decision to "hold" versus "roll", this study integrates probabilistic modeling, heuristic strategies, and Markov Decision Processes (MDPs) to analyze and optimize gameplay. Specifically, this work explores:
 
@@ -39,7 +39,7 @@ This project seeks to answer the central question: what *is* the optimal strateg
 
 -   Multi-player interactions: Extending the analysis to two-player scenarios, incorporating the effects of relative scores and the opponent’s strategy.
 
-Key empirical findings suggest that policies derived from MDP optimization outperform simple heuristic strategies, even when accounting for starting player advantage. However, the analysis also highlights that the best move may simply be to play first, underscoring the significant role of turn order in determining game outcomes.
+Key empirical findings suggest that policies derived from MDP optimization outperform simple heuristic strategies, even when accounting for starting player advantage. However, the analysis also highlights that the best and simplest move for a rational player may simply be to start first, underscoring the significant role of turn order in determining game outcomes.
 
 By defining the state space, transition probabilities, and reward structures of Pig, this project demonstrates how decision-theoretic approaches can effectively optimize strategies in stochastic, competitive settings. Through simulations and mathematical modeling, the study provides valuable insights into the balance between risk and reward in Pig and offers broader implications for strategic decision-making in similar games.
 
@@ -51,7 +51,7 @@ By defining the state space, transition probabilities, and reward structures of 
 
 # Single-Player Pig
 
-For simplicity, I begin by analyzing the single-player version of Pig. This allows me to focus on the core decision-making dynamics of the game without the added complexity of multiple players.
+For simplicity, we begin by analyzing the single-player version of Pig. This allows us to focus on the core decision-making dynamics of the game without the added complexity of multiple players.
 
 ## Mathematical Foundation
 
@@ -95,7 +95,7 @@ To evaluate the heuristic strategy, I simulate the single-player Pig game using 
 
 To elucidate the algorithm's logic:
 
-1.  The player starts with a turn total of 0. It rolls until:
+1.  The agent starts with a turn total of 0. It rolls until:
     -   It reaches the "hold" threshold (e.g., 20),
     -   It rolls a 1 (busts), or
     -   It reaches the target score of 100.
@@ -105,7 +105,7 @@ To elucidate the algorithm's logic:
 2.  The algorithm is repeated for hold thresholds ranging from 17 to 26.
 3.  For each threshold, 100,000 simulations are run to analyze the distribution of the number of turns taken to win the game.
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, include=FALSE}
 hold_thresholds <- c(17:26)
 n_simulations <- 1e5
 
@@ -129,7 +129,7 @@ data_summary <- data |>
   summarise(
     Mean = mean(Turns),
     Median = median(Turns),
-    Std_Err = sd(Turns),
+    Std_Dev = sd(Turns),
     .groups = "drop"
     )
 
@@ -139,7 +139,7 @@ data_summary |>
     Threshold = as.numeric(Threshold),
     Mean = round(Mean, 2),
     Median = round(Median, 2),
-    Std_Err = round(Std_Err, 2)
+    Std_Dev = round(Std_Dev, 2)
   )
 ```
 
@@ -153,6 +153,7 @@ data_density <- data |>
 ggplot(data_density, aes(x = Turns, y = Proportion, color = as.factor(Threshold))) +
   geom_point(size = 1) +
   geom_smooth(
+    formula = y ~ x,
     stat   = "smooth", 
     method = "loess", 
     se     = FALSE, 
@@ -163,7 +164,7 @@ ggplot(data_density, aes(x = Turns, y = Proportion, color = as.factor(Threshold)
   labs(
     title = "Probability Distributions for Different Hold Thresholds",
     subtitle = "Single-Player Heuristic Strategy (n=100,000)",
-    caption = "PMFs were 'smoothed' into PDFs solely for visual comparison purposes.",
+    caption = "For better visualization, PMFs were 'smoothed' into PDFs and results were truncated at 30 turns.",
     x = "Number of Turns to Win",
     y = "P(X=x)",
     color = "Hold Threshold"
@@ -174,13 +175,32 @@ ggplot(data_density, aes(x = Turns, y = Proportion, color = as.factor(Threshold)
   theme(axis.text.x = element_text(angle = 90))
 ```
 
+$$
+\begin{array}{|c|c|c|c|}
+\hline
+\textbf{Threshold} & \textbf{Mean} & \textbf{Median} & \sigma \\
+\hline
+17 & 13.06 & 12 & 4.03 \\
+18 & 12.96 & 12 & 4.25 \\
+19 & 12.64 & 12 & 4.38 \\
+\textbf{20} & \textbf{12.61} & \textbf{12} & \textbf{4.43} \\
+21 & 12.80 & 12 & 4.58 \\
+22 & 13.00 & 12 & 4.81 \\
+23 & 12.96 & 12 & 5.06 \\
+24 & 12.73 & 12 & 5.23 \\
+25 & 12.70 & 12 & 5.28 \\
+26 & 12.80 & 12 & 5.39 \\
+\hline
+\end{array}
+$$
+
 Empirical results indicate the mean number of turns to win the game reaches a minimum at a "hold" threshold of 20. This suggests a threshold of 20 optimally balances the trade-off between accumulating points efficiently while minimizing the risk of busting. Specifically, holding at 20 allows the player to win in fewer turns on average, which aligns with the heuristic assumption that the expected value of rolling ($\mathbb{E}[X\cdot R] = 20$) is maximized up to this point.
 
-Interestingly, the mean number of turns to win the game remains relatively stable across different thresholds, fluctuating only slightly around 12-13 turns. This suggests that, while the choice of "hold" threshold has some impact on efficiency, it primarily affects the *risk profile* of the strategy rather than the average performance. Players who prioritize consistency over variability may prefer lower thresholds (e.g. 18-20), while players willing to accept more risk for potentially higher rewards may opt for higher thresholds (e.g. 22-24).
+Interestingly, the mean number of turns to win the game remains relatively stable across different thresholds, fluctuating only slightly around 12 to 13 turns. This suggests that, while the choice of "hold" threshold has some impact on efficiency, it primarily affects the *risk profile* of the strategy rather than the average performance. Players who prioritize consistency over variability may prefer lower thresholds (e.g. 18 to 20), while players willing to accept more risk for potentially higher rewards may opt for higher thresholds (e.g. 22 to 24).
 
 The consistency in median turns across almost all thresholds (12 turns) further supports this conclusion. Regardless of the threshold chosen, the median number of turns to win the game remains relatively stable, indicating that the heuristic strategy is robust across a range of thresholds.
 
-However, as the thresholds increase, the variance also grows, highlighting that with increased variability, higher thresholds make predictions about individual game lengths less reliable.
+However, as the thresholds increase, the variance also grows, highlighting that with increased variability, higher thresholds make predictions about *individual* game lengths less reliable.
 
 ```{r, echo=FALSE, fig.height = 5, fig.width = 7.5}
 data_pmf <- data_density |> filter(Threshold == 20)
@@ -220,7 +240,7 @@ Nevertheless, the single-player Pig game is only half the fun! The two-player ve
 
 The two-player version of Pig can be formulated as a **Markov Decision Process (MDP)**. This formalism is well-suited for modeling decision-making processes where outcomes are influenced by both strategic decisions and stochastic events. The goal is to determine the *optimal policy* that maximizes a player’s expected utility, accounting for the game’s probabilistic nature and the opponent’s optimal actions.
 
-### Key Assumptions in the MDP Framework:
+### Key MDP Assumptions:
 
 -   Markov Property: The probability of transitioning to a future state depends solely on the current state $s_t$ and action $a_t$, not on prior states and actions. $$
     P(s_{t+1} | s_t, a_t, \ldots, s_0, a_0) = P(s_{t+1} | s_t, a_t)
@@ -236,11 +256,11 @@ The two-player version of Pig can be formulated as a **Markov Decision Process (
 
 -   Reward Function: The reward function $R(s_t, a_t, s_{t+1})$ defines the immediate utility of transitioning from state $s_t$ to state $s_{t+1}$ by taking action $a_t$. We define a simple reward model:
 
-    -   +1 if the player wins ($P + T \ge 100$),
+    1.  +1 if the player wins ($P + T \ge 100$),
 
-    -   -1 if the opponent wins ($O \ge 100$), and
+    2.  -1 if the opponent wins ($O \ge 100$), and
 
-    -   0 otherwise.
+    3.  0 otherwise.
 
 -   Value Function: The value function $V(s)$ represents the expected cumulative reward when starting in state $s$ and following the optimal policy thereafter: $$
     V(s) = \max_{a \in A} \mathbb{E} \left[ R(s_t, a_t, s_{t+1}) + \gamma V(s_{t+1}) \right]
@@ -250,9 +270,9 @@ The two-player version of Pig can be formulated as a **Markov Decision Process (
 
 -   Transition Probabilities: The transition probabilities $P(s_{t+1} | s_t, a_t)$ describe the probability of transitioning to state $s_{t+1}$ when taking action $a_t$ in state $s_t$. For example,
 
-    -   Rolling a 1 transitions to $(0, O, P)$ (opponent's turn).
+    1.  Rolling a 1 transitions to $(0, O, P)$ (opponent's turn).
 
-    -   Rolling $r \in [2,6]$ transitions to $(T+r, P, O)$ (player's turn continues with an increased turn total).
+    2.  Rolling $r \in [2,6]$ transitions to $(T+r, P, O)$ (player's turn continues with an increased turn total).
 
 ### Zero-Sum Framework
 
@@ -298,7 +318,7 @@ In our implementation, we set $\gamma = 1$ to emphasize *future* rewards over im
 
 ## Optimal Value Function and Policy Training
 
-The optimal policy and value function were trained via the previously described value iteration algorithm, where state-value estimates are iteratively updated until convergence. I designed the algorithm to be easily customizable, enabling future work to tinker with parameters like the convergence threshold, maximum turn score, target score, and number of die sides. For this training sequence, I set the convergence threshold to $10^{-5}$ (ensuring convergence to a near-optimal solution while maintaining computational efficiency), the maximum turn score to 100, the target score to 100, and the die to have six sides.
+The optimal policy and value function were trained via the previously described value iteration algorithm, where state-value estimates are iteratively updated until convergence. We designed the algorithm to be easily customizable, enabling future work to tinker with parameters like the convergence threshold, maximum turn score, target score, and number of die sides. For this training sequence, we set the convergence threshold to $10^{-5}$ (ensuring convergence to a near-optimal solution while maintaining computational efficiency), the maximum turn score to 100, the target score to 100, and the die to have six sides.
 
 ```{r, echo=FALSE}
 if (SIMULATE) {
@@ -358,7 +378,7 @@ To evaluate the optimal policy, the optimal policy was visualized under fixed op
 
 This scenario represents the initial state of the game, where the opponent has gone at least once. This scenario is most favorable to the player, since there is no immediate threat of losing.
 
-The optimal policy suggests that the player should hold when the turn total is roughly 20 or more, consistent with the heuristic strategy derived earlier. This strategy is somewhat conservative especially for player scores near 50-70, which reflects the risk of losing progress and falling behind the opponent due to busting. If the player score is above 80, however, the policy becomes more aggressive—encouraging the player to continue rolling until they meet the target score. This shift indicates the player's willingness to take calculated risks to reach the target score that same turn, leveraging their substantial lead over the opponent.
+The optimal policy suggests that the player should hold when the turn total is roughly 20 or more, consistent with the heuristic strategy derived earlier. This strategy is somewhat conservative especially for player scores near 50 to 70, which reflects the risk of losing progress and falling behind the opponent due to busting. If the player score is above 80, however, the policy becomes more aggressive—encouraging the player to continue rolling until they meet the target score. This shift indicates the player's willingness to take calculated risks to reach the target score that same turn, leveraging their substantial lead over the opponent.
 
 #### Opponent Score: 33
 
@@ -368,7 +388,7 @@ This scenario represents an early-to-mid game state where the opponent has accum
 
 This scenario represents an mid-to-late game state where the opponent is closing in on the target score. Naturally, the stakes for the player are higher, which is reflected in the much more aggressive optimal policy.
 
-For a player very behind the opponent (scores of 0-20), the player is encouraged to only hold at turn totals of 30-40 and players moderately behind the opponent (scores of 21-60) hold at turn totals 20-30. The strategy here shifts toward catching up to the opponent, prioritizing rolling to gain ground quickly.
+For a player very behind the opponent (scores of 0 to 20), the player is encouraged to only hold at turn totals of 30 to 40 and players moderately behind the opponent (scores of 21 to 60) hold at turn totals 20 to 30. The strategy here shifts toward catching up to the opponent, prioritizing rolling to gain ground quickly.
 
 For higher player scores ($P>60$), the policy instructs the player to continue rolling aggressively until the target score is reached. This reflects the urgency to secure a win before the opponent's next turn.
 
@@ -405,16 +425,19 @@ ggplot(value_data, aes(x = PlayerScore, y = TurnTotal, fill = Value)) +
        x = "Player's Score",
        y = "Turn Total",
        fill = "Value") +
+  scale_fill_gradient2(low = "darkred", mid = "white", high = "darkgreen", midpoint = 0) +
   scale_x_continuous(breaks = seq(0, 100, 10)) +
   scale_y_continuous(breaks = seq(0, 100, 10)) +
   facet_wrap(~ OpponentScore, ncol = 2, labeller = label_both) +
   theme_pub() +
-  theme(strip.text = element_text(size = 12, face = "bold"))
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 8))
 ```
 
 The state value heatmaps illustrate the expected future rewards for different game states, corroborating the training's emphasis on maximizing long-term rewards over immediate gains. Again, each heatmap corresponds to a fixed opponent score ($O \in \{6,33,67,99\}$).
 
-As expected, the state values correspond closely with the optimal policy heatmaps. For instance, the highest state values (+1) are observed near the target score of 100, reflecting the substantial reward associated with winning the game. Conversely, the lowest state values (-0.5) are concentrated near states with low player scores, low player turn totals, and a high opponent score (e.g. 99). The state values smoothly transition between these extremes, reflecting the gradual changes in expected rewards as the game progresses.
+As expected, the state values correspond closely with the optimal policy heatmaps (albeit, it appears to be a very basic version of a policy since it is not a direct mapping to the optimal learned policy). For instance, the highest state values (+1) are observed near the target score of 100, reflecting the substantial reward associated with winning the game. Conversely, the lowest state values (-0.5) are concentrated near states with low player scores, low player turn totals, and a high opponent score (e.g. 99). The state values smoothly transition between these extremes, reflecting the gradual changes in expected rewards as the game progresses.
 
 The value function aligns with the optimal policy's calculated trade-offs between risk and reward across game states, reinforcing the player’s perceived chances of winning in different scenarios. These results confirm that the value iteration effectively prioritizes future rewards while adapting to the stakes of each scenario.
 
@@ -503,9 +526,9 @@ ggplot(win_data, aes(x = Player, y = WinRate, fill = Player)) +
 
 In this scenario, both players followed the optimal policy derived from the value iteration algorithm.
 
-As expected with both agents using the exact same strategy, the results are similar to the heuristic strategy vs. heuristic strategy match-up: Over 100,000 simulations, the starting player (Player 1) won approximately 53.2% of the games, while the second player (Player 2) won the remaining 46.8%.
+As (now) expected with both agents using the exact same strategy, the results are similar to the heuristic strategy vs. heuristic strategy match-up: Over 100,000 simulations, the starting player (Player 1) won approximately 53.2% of the games, while the second player (Player 2) won the remaining 46.8%.
 
-The optimal policy, while maximizing the expected utility for each player, does not eliminate the starting player advantage, despite being trained under the assumption that both players would play optimally. Though the starting player advantage is marginally less now at 6.4%, the empirical results suggest the inherent dynamics of the game, rather than the specific strategy employed, play a significant role in determining the outcome when agents share the same strategy.
+The optimal policy, while maximizing the expected utility for each player, does not eliminate the starting player advantage, despite being trained under the assumption that both players would play optimally. Though the starting player advantage is *marginally* less now at 6.4%, the empirical results suggest the inherent dynamics of the game, rather than the specific strategy employed, play a significant role in determining the outcome when agents share the same strategy.
 
 ### Optimal vs. Heuristic
 
@@ -583,7 +606,7 @@ In perhaps the most critical test, the optimal policy faced off against the heur
 
 When the optimal policy went first, it won approximately 57.2% of the games, leaving the heuristic strategy with only 42.8% of wins. This notable gap of 14.4% in win rates underscores the optimal policy's clear superiority over the heuristic strategy. The optimal policy's ability to adapt to the game state and make strategic decisions based on long-term rewards significantly outperforms the simplistic and rigid heuristic strategy.
 
-More revealingly, the optimal policy *overcame* the starting player advantage when the starting player relied on the heuristic strategy. Here, the non-starting player (Player 1) using the optimal policy defeated Player 2 in 51.1% of games, surpassing the expected win rate for a non-starting player. Previously, when both players used the same strategy, the non-starting player won only 46.7% of games (averaging both previous scenarios). This indicates that the optimal policy provides a roughly 4.4% additional advantage to the non-starting player when facing a starting player using a sub-optimal policy.
+More revealingly, the optimal policy *overcame* the starting player advantage when the starting player relied on the heuristic strategy. On the right side, the non-starting player (Player 1) using the optimal policy defeated Player 2 in 51.1% of games, surpassing the expected win rate for a non-starting player. Previously, when both players used the same strategy, the non-starting player won only 46.7% of games (averaging both previous scenarios). This indicates that the optimal policy provides a roughly 4.4% *additional* advantage to the non-starting player when facing a starting player using a sub-optimal policy.
 
 The optimal policy's ability to make informed decisions based on the game state and the opponent's progress allows it to outperform the heuristic strategy consistently, regardless of whether it starts first or second. This highlights the heuristic strategy's inherent limitations when faced with an opponent employing a more sophisticated and adaptive strategy. The heuristic strategy's rigidity and lack of strategic depth make it vulnerable to exploitation by the optimal policy, leading to a substantial difference in win rates and even neutralizing its starting player advantage.
 
@@ -593,15 +616,18 @@ This project explored the game of Pig through various lenses, leveraging probabi
 
 ## Key Findings
 
-Key findings include:
+### Optimal "Hold" Threshold at 20:
+The heuristic strategy of holding at a turn total of 20 was identified as the best threshold for minimizing the average number of turns to win in a single-player game. Nevertheless, the general heuristic strategy was robust across different thresholds and its consistency in median turns to win the game suggests a very simple, reliable, and efficient approach to single-player Pig.
 
--   Optimal "Hold" Threshold at 20: The heuristic strategy of holding at a turn total of 20 was identified as the best threshold for minimizing the average number of turns to win in a single-player game. Nevertheless, the general heuristic strategy was robust across different thresholds and its consistency in median turns to win the game suggests a very simple, reliable, and efficient approach to single-player Pig.
--   Superior Optimal Policy Strategy: The optimal policy derived from value iteration outperformed the heuristic strategy in a head-to-head two-player setting, demonstrating a clear advantage in win rates and adaptability to game states. The optimal policy effectively neutralized the starting player advantage and provided a substantial edge over the heuristic strategy, emphasizing the importance adaptability in strategic decision-making.
--   Starting Player Advantage: Simulations revealed a consistent starting player advantage, with the first player winning approximately 53.3% of games under both heuristic vs. heuristic and optimal vs. optimal conditions. This advantage suggests that all else equal, the best move may be simply to go first (assuming a rationale strategy).
+### Superior Optimal Policy Strategy:
+The optimal policy derived from value iteration outperformed the heuristic strategy in a head-to-head two-player setting, demonstrating a clear advantage in win rates and adaptability to game states. The optimal policy effectively neutralized the starting player advantage and provided a substantial edge over the heuristic strategy, emphasizing the importance adaptability in strategic decision-making.
+
+### Starting Player Advantage:
+Simulations revealed a consistent starting player advantage, with the first player winning approximately 53.3% of games under both heuristic vs. heuristic and optimal vs. optimal conditions. This advantage suggests that all else equal, the best move may be simply to go first (assuming a rational strategy).
 
 ## Strengths and Weaknesses
 
-My work comprehensively explores and evaluates both the heuristic and optimal policy strategies in Pig. I examine the impact of different "hold" thresholds in single-player Pig, analyze the optimal policy's performance in two-player Pig using heatmaps of the optimal policy and values at different game states, and simulate various match-ups to assess the strategies' effectiveness. I also provide a mathematical justification for each approach and where assumptions are made that may not necessarily hold true in practice. Further, my implementation of each algorithm allows for easy modification of parameters, such as the target score, die configuration, or convergence criteria, enabling future research into variations of the game.
+Our work comprehensively explores and evaluates both the heuristic and optimal policy strategies in Pig. We examine the impact of different "hold" thresholds in single-player Pig, analyze the optimal policy's performance in two-player Pig using heatmaps of the optimal policy and values at different game states, and simulate various match-ups to assess the strategies' effectiveness. We also provide a mathematical justification for each approach and where assumptions are made that may not necessarily hold true in practice. Further, our implementation of each algorithm allows for easy modification of parameters, such as the target score, die configuration, or convergence criteria, enabling future research into variations of the game.
 
 However, the project is not without limitations. The simulations are based on a finite number of games and may not fully capture the strategies' long-term performance. The assumption of perfect play by both agents may not reflect real-world scenarios, where human players may exhibit suboptimal behavior. Additionally, the project focuses on a simplified version of Pig, which may not fully capture the complexity of the game in more nuanced settings. Future work could explore more advanced strategies, such as incorporating randomness into the optimal policy or extending the analysis to multi-player variants of Pig.
 
@@ -609,13 +635,17 @@ However, the project is not without limitations. The simulations are based on a 
 
 As previously alluded, the project leaves ample room for future extensions, especially given the highly scalable design I employed in the engineering design of the algorithms. Potential avenues for further exploration include:
 
--   Influence of Target Score: Analyzing how changing the target score affects the optimal policy and heuristic strategy, particularly in scenarios where the target score is significantly higher or lower than 100. This could reveal insights into the trade-offs between risk and reward in Pig-like games with different win conditions. This exploration can be similarly extended to other game parameters including the number of die sides (which could make rolling less risky) or fine-tuning of the discount factor $\gamma$ (which could increase the increase the emphasis on immediate rewards and potentially alter the propensity to "hold").
+### Influence of Target Score and Other Hyperparameters:
+Analyzing how changing the target score affects the optimal policy and heuristic strategy, particularly in scenarios where the target score is significantly higher or lower than 100. This could reveal insights into the trade-offs between risk and reward in Pig-like games with different win conditions. This exploration can be similarly extended to other game parameters including the number of die sides (which could make rolling less risky) or fine-tuning of the discount factor $\gamma$ (which could increase the increase the emphasis on immediate rewards and potentially alter the propensity to "hold").
 
--   Starting Player Advantage: Investigating methods or rules to balance the game, such as introducing handicaps or alternating the starting player. Accomplishing this could reveal just how superior the optimal policy may be... or how robust the heuristic strategy is against such handicaps.
+### Starting Player Advantage:
+Investigating methods or rules to balance the game, such as introducing handicaps or alternating the starting player. Accomplishing this could reveal just how superior the optimal policy may be... or how robust the heuristic strategy is against such handicaps.
 
--   Multi-Player Variants: Extending the analysis to more than two players, where the dynamics of turn order and relative scoring become even more complex. This ambitious task could reveal new biases that were not fully observed in the single or two player settings.
+### Multi-Player Variants:
+Extending the analysis to more than two players, where the dynamics of turn order and relative scoring become even more complex. This could reveal new biases that were not fully observed in the single or two player settings.
 
--   Incorporating Randomness in Policy Choices: Introduce slight randomness into the optimal policy to better simulate human behavior and test whether a non-deterministic decision-making process improves robustness against unforeseen scenarios.
+### Incorporating Randomness in Policy Choices:
+Introduce slight randomness into the optimal policy to better simulate human behavior and test whether a non-deterministic decision-making process improves robustness against unforeseen scenarios.
 
 ## Closing Thoughts
 
@@ -623,11 +653,12 @@ This study demonstrated the power of decision-theoretic approaches in optimizing
 
 # References
 
-Adams, R. P. (2019). *Markov Decision Processes*. COS324 Elements of Machine Learning, Princeton University. Retrieved from https://www.cs.princeton.edu/courses/archive/spring19/cos324/files/expectimax.pdf
+Adams, R. P. (2019). *Markov Decision Processes*. COS324 Elements of Machine Learning, Princeton University. Retrieved from  
+https://www.cs.princeton.edu/courses/archive/spring19/cos324/files/expectimax.pdf.
 
 Game On Family, “How to Play the Pig Dice Game,” https://gameonfamily.com/pig-dice/.
 
-Lafferty, J. (2024). *Reinforcement Learning: Policy Methods*. S&DS 365 Intermediate Machine Learning, Yale University. Retrieved from https://github.com/YData123/sds365-fa24/raw/main/lectures/lecture-oct-30.pdf
+Lafferty, J. (2024). *Reinforcement Learning: Policy Methods*. S&DS 365 Intermediate Machine Learning, Yale University. Retrieved from https://github.com/YData123/sds365-fa24/raw/main/lectures/lecture-oct-30.pdf.
 
 \newpage
 
@@ -635,9 +666,9 @@ Lafferty, J. (2024). *Reinforcement Learning: Policy Methods*. S&DS 365 Intermed
 
 ## Verbose Simulations
 
-In this section, I run the simulations with verbose output to provide a more detailed look at the game dynamics and decision-making processes. This is to support the correctness and robustness of the algorithms and to provide a more interactive experience for readers interested in the inner workings of the simulations.
+In this section, we run the simulations with verbose output to provide a more detailed look at the game dynamics and decision-making processes. This is to support the correctness and robustness of the algorithms and to provide a more interactive experience for readers interested in the inner workings of the simulations.
 
-The actual code is hidden by default due to its length and complexity, but it is all found in the `src` folder.
+The actual code is hidden by default due to its length and complexity, but it is all found in the `src/` folder.
 
 ### Single-Player Pig: Heuristic
 
